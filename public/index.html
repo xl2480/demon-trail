@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>妖印试炼 · 3D</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@500;700&display=swap');
+
+        :root {
+            --safe-bottom: env(safe-area-inset-bottom, 16px);
+        }
+
+        html, body {
+            margin: 0; height: 100%; color: #e0e0e0; font-family: 'Noto Serif SC', serif;
+            overflow: hidden; user-select: none; touch-action: none; -webkit-tap-highlight-color: transparent;
+            background: #04150d;
+        }
+
+        /* The three.js canvas is injected by app.js and sits behind everything */
+        #scene-canvas { position: fixed; inset: 0; z-index: 0; display: block; }
+
+        /* ---- top status bar ---- */
+        #status-bar {
+            position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 50;
+            background: rgba(8, 25, 16, 0.6); border: 1px solid rgba(255,255,255,0.12);
+            padding: 6px 18px; border-radius: 40px; font-size: 14px; color: #ffe9a8;
+            text-shadow: 1px 1px 3px #000; backdrop-filter: blur(3px); pointer-events: none;
+            max-width: 80vw; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+
+        /* ---- last-picked corner card ---- */
+        #picked-info {
+            position: fixed; top: 12px; right: 12px; z-index: 50;
+            display: flex; flex-direction: column; align-items: center; gap: 2px;
+            opacity: 0.95; pointer-events: none;
+        }
+        .mini-card {
+            width: 42px; height: 62px; border-radius: 5px; border: 1px solid rgba(255,255,255,0.3);
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Ma Shan Zheng', serif; font-size: 15px; color: #fff; text-shadow: 1px 1px 1px #000;
+            box-shadow: 2px 2px 6px rgba(0,0,0,0.6);
+        }
+        .picked-label { font-size: 10px; color: #ccc; text-shadow: 1px 1px 1px #000; }
+
+        /* ---- controls ---- */
+        /* sits just above the HUD hand (which fills the bottom ~20% of screen) */
+        #controls {
+            position: fixed; left: 50%; transform: translateX(-50%); z-index: 90;
+            display: none; gap: 12px; justify-content: center; width: 90%;
+            bottom: calc(var(--safe-bottom) + 23vh);
+        }
+        .btn {
+            padding: 11px 0; width: 30%; max-width: 140px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.12);
+            font-weight: bold; font-size: 15px; font-family: inherit; cursor: pointer;
+            box-shadow: 0 6px 14px rgba(0,0,0,0.6); transition: transform .08s;
+        }
+        .btn:active { transform: scale(0.95); }
+        .btn-play { background: linear-gradient(to bottom, #f1c40f, #d4ac0d); color: #3e2723; }
+        .btn-pass { background: linear-gradient(to bottom, #444, #222); color: #ccc; border-color: #555; }
+        .btn-ex   { background: linear-gradient(to bottom, #e74c3c, #c0392b); color: #fff; }
+        .btn-hint { background: linear-gradient(to bottom, #3498db, #21618c); color: #fff; }
+        .btn:disabled { opacity: 0.5; filter: grayscale(1); cursor: default; }
+
+        /* ---- attribute colors (used by mini-card & pick modal) ---- */
+        .金 { background: linear-gradient(135deg, #f1c40f, #b7950b); }
+        .木 { background: linear-gradient(135deg, #2ecc71, #1e8449); }
+        .水 { background: linear-gradient(135deg, #3498db, #21618c); }
+        .火 { background: linear-gradient(135deg, #ff4d4d, #c0392b); }
+        .土 { background: linear-gradient(135deg, #8d6e63, #4e342e); }
+        .幽 { background: linear-gradient(135deg, #2c2c2c, #000); color: #d2b4de !important; }
+
+        /* ---- modals ---- */
+        .modal {
+            position: fixed; inset: 0; background: rgba(4, 18, 11, 0.92); z-index: 3000;
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            backdrop-filter: blur(5px);
+        }
+        #toast-container { position: fixed; top: 14%; left: 50%; transform: translateX(-50%); z-index: 5000; pointer-events: none; width: 90%; text-align: center; }
+        .toast-msg { display: inline-block; background: rgba(20, 30, 25, 0.95); border-left: 4px solid #ffd700; color: #fff; padding: 10px 20px; margin-top: 10px; border-radius: 4px; font-size: 14px; animation: slideDown 0.3s; box-shadow: 0 5px 15px rgba(0,0,0,0.5); white-space: pre-line; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+        h1.title { color: #f1c40f; font-size: 44px; text-shadow: 0 2px 12px rgba(0,0,0,0.8); font-family: 'Ma Shan Zheng', serif; margin-bottom: 8px; }
+
+        .slot-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; max-width: 90vw; }
+        .slot-item { background: rgba(20, 40, 30, 0.85); border: 2px solid #2a5a4a; border-radius: 10px; padding: 16px; text-align: center; cursor: pointer; transition: 0.2s; box-shadow: 0 6px 16px rgba(0,0,0,0.4); min-width: 90px; }
+        .slot-item:hover { border-color: #4a8a7a; transform: translateY(-3px); }
+        @media (max-width: 500px) { .slot-grid { grid-template-columns: repeat(2, 1fr); } }
+
+        .score-table { width: 95%; max-width: 700px; font-size: 15px; margin-bottom: 25px; border-spacing: 0 8px; border-collapse: separate; }
+        .score-table th { color: #aaa; text-align: center; padding: 10px; font-weight: normal; }
+        .score-table td { background: rgba(30, 30, 30, 0.85); border: 1px solid #444; text-align: center; padding: 15px; }
+        .score-table td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+        .score-table td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; font-weight: bold; color: #ffd700; font-size: 18px; }
+        .score-row-winner td { color: #ffd700; background: rgba(60, 50, 20, 0.85); border-color: #887700; }
+
+        .pick-card {
+            width: 64px; height: 96px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+            font-family: 'Ma Shan Zheng', serif; font-size: 30px; color: #fff; cursor: pointer;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7); box-shadow: 2px 3px 6px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.15); transition: transform .1s;
+        }
+        .pick-card:hover { transform: translateY(-8px); box-shadow: 0 0 15px #ffd700; }
+    </style>
+</head>
+<body>
+
+<div id="toast-container"></div>
+<div id="build-tag" style="position:fixed; bottom:2px; right:6px; z-index:9000; font-size:10px; color:rgba(255,255,255,0.35); pointer-events:none;">v4</div>
+
+<div id="status-bar" style="display:none;"></div>
+<div id="picked-info"></div>
+
+<!-- Lobby -->
+<div id="lobby" class="modal" style="display: flex;">
+    <h1 class="title">妖印试炼</h1>
+    <p style="color:#9fb; margin-top:0; margin-bottom:24px; font-size:13px;">六道试炼 · 三方角力</p>
+    <div id="slots-area" class="slot-grid"></div>
+</div>
+
+<!-- In-game controls -->
+<div id="controls">
+    <button onclick="window.doHint()" class="btn btn-hint" id="btn-hint">提示</button>
+    <button onclick="window.doPlay()" class="btn btn-play" id="btn-play">出牌</button>
+    <button onclick="window.doPass()" class="btn btn-pass" id="btn-pass">跳过</button>
+    <button onclick="window.doEx()"   class="btn btn-ex"   id="btn-ex">给队友</button>
+</div>
+
+<!-- Pick modal -->
+<div id="pick-modal" class="modal">
+    <h2 style="color: #f1c40f; margin-bottom: 20px;">请收服一张妖牌</h2>
+    <div id="pick-options" style="display: flex; gap: 12px; flex-wrap:wrap; justify-content:center;"></div>
+</div>
+
+<!-- Round over -->
+<div id="round-over-modal" class="modal">
+    <h1 style="color: gold; margin-bottom: 20px;">本局结算</h1>
+    <table class="score-table">
+        <thead><tr><th>座位</th><th>玩家</th><th>本局增加 (手牌)</th><th>总妖印</th></tr></thead>
+        <tbody id="score-body"></tbody>
+    </table>
+    <button id="btn-next-round" class="btn btn-play" onclick="window.readyForNext()" style="font-size: 20px; padding: 15px 40px; width: auto; max-width: none;">开始下一局</button>
+    <div id="ready-status" style="margin-top: 15px; color: #ccc;"></div>
+</div>
+
+<!-- Game over -->
+<div id="game-over-modal" class="modal">
+    <div style="background: #151515; border: 1px solid #333; padding: 30px; border-radius: 10px; width: 80%; max-width: 400px; text-align: center; box-shadow: 0 0 30px rgba(0,0,0,0.8);">
+        <h1 style="color: #f1c40f; font-family: 'Ma Shan Zheng', serif;">试炼终结</h1>
+        <div id="result-content" style="white-space: pre-wrap; font-size: 16px; line-height: 1.8; color: #ccc; margin-bottom: 20px;"></div>
+        <button class="btn btn-play" onclick="location.reload()">返回</button>
+    </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script type="module" src="./app.js?v=4"></script>
+</body>
+</html>
